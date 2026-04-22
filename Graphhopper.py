@@ -1,0 +1,321 @@
+import os
+import requests
+import urllib.parse
+import tkinter as tk
+from tkinter import ttk, messagebox, scrolledtext
+
+# =========================================
+# CONFIG
+# =========================================
+ROUTE_URL = "https://graphhopper.com/api/1/route?"
+API_KEY = ("a7165d35-6383-44cd-b07d-4f6ce277403d")
+
+
+# =========================================
+# API FUNCTIONS
+# =========================================
+def geocoding(location, key):
+    geocode_url = "https://graphhopper.com/api/1/geocode?"
+    url = geocode_url + urllib.parse.urlencode(
+        {"q": location, "limit": 1, "key": key}
+    )
+
+    try:
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        status = response.status_code
+    except requests.exceptions.RequestException as e:
+        return None, None, None, None, f"Geocoding request failed: {e}"
+    except ValueError:
+        return None, None, None, None, "Geocoding response could not be decoded."
+
+    if status == 200 and len(data.get("hits", [])) > 0:
+        hit = data["hits"][0]
+        lat = hit["point"]["lat"]
+        lng = hit["point"]["lng"]
+        name = hit.get("name", location)
+        country = hit.get("country", "")
+        state = hit.get("state", "")
+
+        if state and country:
+            full_name = f"{name}, {state}, {country}"
+        elif country:
+            full_name = f"{name}, {country}"
+        else:
+            full_name = name
+
+        return status, lat, lng, full_name, None
+
+    if status != 200:
+        return status, None, None, None, data.get("message", "Unknown geocoding error.")
+
+    return status, None, None, None, "No matching location found."
+
+
+def get_route(orig, dest, vehicle, key):
+    op = "&point=" + str(orig[1]) + "%2C" + str(orig[2])
+    dp = "&point=" + str(dest[1]) + "%2C" + str(dest[2])
+
+    route_request_url = (
+        ROUTE_URL
+        + urllib.parse.urlencode({"key": key, "vehicle": vehicle})
+        + op
+        + dp
+    )
+
+    try:
+        response = requests.get(route_request_url, timeout=10)
+        data = response.json()
+        status = response.status_code
+    except requests.exceptions.RequestException as e:
+        return None, f"Routing request failed: {e}"
+    except ValueError:
+        return None, "Routing response could not be decoded."
+
+    if status != 200:
+        return None, data.get("message", "Unknown routing error.")
+
+    return data, None
+
+
+# =========================================
+# GUI APP
+# =========================================
+class GraphHopperApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("GraphHopper Route Planner")
+        self.root.geometry("900x700")
+        self.root.configure(bg="#f4f6f8")
+
+        self.build_styles()
+        self.build_ui()
+
+    def build_styles(self):
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        style.configure("TLabel", font=("Arial", 11), background="#f4f6f8")
+        style.configure("Title.TLabel", font=("Arial", 20, "bold"), foreground="#1f4e79", background="#f4f6f8")
+        style.configure("Header.TLabel", font=("Arial", 12, "bold"), foreground="#0b5394", background="#f4f6f8")
+
+        style.configure("TButton", font=("Arial", 11, "bold"), padding=8)
+        style.configure("TEntry", padding=6)
+        style.configure("TCombobox", padding=6)
+
+        style.configure("Card.TFrame", background="white", relief="solid", borderwidth=1)
+        style.configure("Summary.TLabel", font=("Courier New", 11), background="white", foreground="#222")
+
+    def build_ui(self):
+        main = ttk.Frame(self.root, padding=15)
+        main.pack(fill="both", expand=True)
+
+        title = ttk.Label(main, text="GraphHopper Route Planner", style="Title.TLabel")
+        title.pack(pady=(0, 15))
+
+        # Input card
+        input_card = ttk.Frame(main, style="Card.TFrame", padding=15)
+        input_card.pack(fill="x", pady=(0, 15))
+
+        ttk.Label(input_card, text="Route Input", style="Header.TLabel").grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+
+        ttk.Label(input_card, text="Starting Location:").grid(row=1, column=0, sticky="w", padx=(0, 10), pady=6)
+        self.start_entry = ttk.Entry(input_card, width=45)
+        self.start_entry.grid(row=1, column=1, sticky="ew", pady=6)
+
+        ttk.Label(input_card, text="Destination:").grid(row=2, column=0, sticky="w", padx=(0, 10), pady=6)
+        self.dest_entry = ttk.Entry(input_card, width=45)
+        self.dest_entry.grid(row=2, column=1, sticky="ew", pady=6)
+
+        ttk.Label(input_card, text="Vehicle Profile:").grid(row=3, column=0, sticky="w", padx=(0, 10), pady=6)
+        self.vehicle_combo = ttk.Combobox(input_card, values=["car", "bike", "foot"], state="readonly", width=20)
+        self.vehicle_combo.grid(row=3, column=1, sticky="w", pady=6)
+        self.vehicle_combo.set("car")
+
+        input_card.columnconfigure(1, weight=1)
+
+        button_frame = ttk.Frame(input_card)
+        button_frame.grid(row=4, column=0, columnspan=2, pady=(12, 0), sticky="w")
+
+        ttk.Button(button_frame, text="Get Route", command=self.get_route_gui).pack(side="left", padx=(0, 10))
+        ttk.Button(button_frame, text="Clear", command=self.clear_fields).pack(side="left", padx=(0, 10))
+        ttk.Button(button_frame, text="Save Route", command=self.save_route).pack(side="left", padx=(0, 10))
+        ttk.Button(button_frame, text="Exit", command=self.root.quit).pack(side="left")
+
+        # Summary card
+        summary_card = ttk.Frame(main, style="Card.TFrame", padding=15)
+        summary_card.pack(fill="x", pady=(0, 15))
+
+        ttk.Label(summary_card, text="Trip Summary", style="Header.TLabel").pack(anchor="w", pady=(0, 10))
+
+        self.summary_label = ttk.Label(
+            summary_card,
+            text="No route loaded yet.",
+            style="Summary.TLabel",
+            justify="left"
+        )
+        self.summary_label.pack(anchor="w")
+
+        # Directions card
+        directions_card = ttk.Frame(main, style="Card.TFrame", padding=15)
+        directions_card.pack(fill="both", expand=True)
+
+        ttk.Label(directions_card, text="Turn-by-Turn Directions", style="Header.TLabel").pack(anchor="w", pady=(0, 10))
+
+        self.directions_text = scrolledtext.ScrolledText(
+            directions_card,
+            wrap="word",
+            font=("Arial", 11),
+            height=18
+        )
+        self.directions_text.pack(fill="both", expand=True)
+        self.directions_text.config(state="disabled")
+
+        self.last_route_data = None
+
+    def get_route_gui(self):
+        start = self.start_entry.get().strip()
+        dest = self.dest_entry.get().strip()
+        vehicle = self.vehicle_combo.get().strip().lower()
+
+        if API_KEY == "YOUR_API_KEY_HERE":
+            messagebox.showwarning("Missing API Key", "Please set your GraphHopper API key first.")
+            return
+
+        if not start:
+            messagebox.showwarning("Input Error", "Starting location cannot be blank.")
+            return
+
+        if not dest:
+            messagebox.showwarning("Input Error", "Destination cannot be blank.")
+            return
+
+        if vehicle not in ["car", "bike", "foot"]:
+            messagebox.showwarning("Input Error", "Please select a valid vehicle profile.")
+            return
+
+        self.summary_label.config(text="Processing route...")
+        self.set_directions_text("Loading directions...\n")
+
+        orig = geocoding(start, API_KEY)
+        if orig[0] != 200 or orig[1] is None:
+            messagebox.showerror("Geocoding Error", orig[4] or "Invalid starting location.")
+            self.summary_label.config(text="No route loaded.")
+            self.set_directions_text("")
+            return
+
+        dest_data = geocoding(dest, API_KEY)
+        if dest_data[0] != 200 or dest_data[1] is None:
+            messagebox.showerror("Geocoding Error", dest_data[4] or "Invalid destination.")
+            self.summary_label.config(text="No route loaded.")
+            self.set_directions_text("")
+            return
+
+        route_data, error = get_route(orig, dest_data, vehicle, API_KEY)
+        if error:
+            messagebox.showerror("Routing Error", error)
+            self.summary_label.config(text="No route loaded.")
+            self.set_directions_text("")
+            return
+
+        self.display_route(orig, dest_data, vehicle, route_data)
+
+    def display_route(self, orig, dest, vehicle, route_data):
+        path_info = route_data["paths"][0]
+
+        miles = path_info["distance"] / 1000 / 1.61
+        km = path_info["distance"] / 1000
+        sec = int(path_info["time"] / 1000 % 60)
+        mins = int(path_info["time"] / 1000 / 60 % 60)
+        hrs = int(path_info["time"] / 1000 / 60 / 60)
+        instructions = path_info["instructions"]
+
+        summary = (
+            f"Starting Location : {orig[3]}\n"
+            f"Destination       : {dest[3]}\n"
+            f"Vehicle Profile   : {vehicle}\n"
+            f"Distance          : {miles:.1f} miles / {km:.1f} km\n"
+            f"Duration          : {hrs:02d}:{mins:02d}:{sec:02d}"
+        )
+        self.summary_label.config(text=summary)
+
+        directions_output = []
+        for i, step in enumerate(instructions, start=1):
+            text = step["text"]
+            step_km = step["distance"] / 1000
+            step_miles = step_km / 1.61
+            directions_output.append(
+                f"{i:02d}. {text}\n"
+                f"    Distance: {step_km:.1f} km / {step_miles:.1f} miles\n"
+            )
+
+        self.set_directions_text("\n".join(directions_output))
+
+        self.last_route_data = {
+            "origin": orig[3],
+            "destination": dest[3],
+            "vehicle": vehicle,
+            "miles": miles,
+            "km": km,
+            "hrs": hrs,
+            "mins": mins,
+            "sec": sec,
+            "instructions": instructions,
+        }
+
+    def set_directions_text(self, text):
+        self.directions_text.config(state="normal")
+        self.directions_text.delete("1.0", tk.END)
+        self.directions_text.insert(tk.END, text)
+        self.directions_text.config(state="disabled")
+
+    def clear_fields(self):
+        self.start_entry.delete(0, tk.END)
+        self.dest_entry.delete(0, tk.END)
+        self.vehicle_combo.set("car")
+        self.summary_label.config(text="No route loaded yet.")
+        self.set_directions_text("")
+        self.last_route_data = None
+
+    def save_route(self):
+        if not self.last_route_data:
+            messagebox.showwarning("No Data", "There is no route to save yet.")
+            return
+
+        filename = "route_result.txt"
+
+        try:
+            with open(filename, "w", encoding="utf-8") as file:
+                file.write("GRAPHHOPPER ROUTE RESULT\n")
+                file.write("=" * 50 + "\n")
+                file.write(f"Starting Location : {self.last_route_data['origin']}\n")
+                file.write(f"Destination       : {self.last_route_data['destination']}\n")
+                file.write(f"Vehicle Profile   : {self.last_route_data['vehicle']}\n")
+                file.write(f"Distance          : {self.last_route_data['miles']:.1f} miles / {self.last_route_data['km']:.1f} km\n")
+                file.write(
+                    f"Duration          : {self.last_route_data['hrs']:02d}:"
+                    f"{self.last_route_data['mins']:02d}:"
+                    f"{self.last_route_data['sec']:02d}\n"
+                )
+                file.write("\nTURN-BY-TURN DIRECTIONS\n")
+                file.write("-" * 50 + "\n")
+
+                for i, step in enumerate(self.last_route_data["instructions"], start=1):
+                    path = step["text"]
+                    distance_km = step["distance"] / 1000
+                    distance_miles = distance_km / 1.61
+                    file.write(f"{i:02d}. {path}\n")
+                    file.write(f"    Distance: {distance_km:.1f} km / {distance_miles:.1f} miles\n")
+
+            messagebox.showinfo("Saved", f"Route saved to {filename}")
+        except Exception as e:
+            messagebox.showerror("Save Error", f"Could not save file:\n{e}")
+
+
+# =========================================
+# MAIN
+# =========================================
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = GraphHopperApp(root)
+    root.mainloop()

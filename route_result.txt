@@ -1,0 +1,34 @@
+GRAPHHOPPER ROUTE RESULT
+==================================================
+Starting Location : Washington, District of Columbia, United States
+Destination       : Baltimore, Maryland, United States
+Vehicle Profile   : car
+Distance          : 38.5 miles / 62.1 km
+Duration          : 00:51:31
+
+TURN-BY-TURN DIRECTIONS
+--------------------------------------------------
+01. Continue onto 15th Street Northwest
+    Distance: 0.4 km / 0.3 miles
+02. Turn right onto New York Avenue Northwest
+    Distance: 0.9 km / 0.6 miles
+03. Turn slight right onto K Street Northwest
+    Distance: 0.2 km / 0.1 miles
+04. Turn left onto 7th Street Northwest
+    Distance: 0.1 km / 0.1 miles
+05. Turn right onto New York Avenue Northwest
+    Distance: 4.8 km / 3.0 miles
+06. Continue onto New York Avenue Northeast
+    Distance: 2.8 km / 1.7 miles
+07. Keep left onto Baltimore-Washington Parkway and drive toward Baltimore
+    Distance: 51.7 km / 32.1 miles
+08. Turn right onto West Baltimore Street
+    Distance: 0.6 km / 0.4 miles
+09. Turn left onto North Charles Street
+    Distance: 0.2 km / 0.1 miles
+10. Turn right onto East Lexington Street
+    Distance: 0.4 km / 0.2 miles
+11. Turn right onto Guilford Avenue
+    Distance: 0.0 km / 0.0 miles
+12. Arrive at destination
+    Distance: 0.0 km / 0.0 miles
